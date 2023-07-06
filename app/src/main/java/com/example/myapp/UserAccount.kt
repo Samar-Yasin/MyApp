@@ -5,6 +5,7 @@ import android.app.Activity.RESULT_OK
 import android.app.AlertDialog
 import android.content.Context
 import android.content.DialogInterface
+import android.content.DialogInterface.OnClickListener
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
@@ -12,6 +13,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -30,29 +32,36 @@ import java.io.File
 
 class UserAccount : Fragment() {
 
-    private var selectedImageUri: Uri? = null
-
     private lateinit var mySharedPreference: SharedPreferences
     private var savedEmail: String = ""
     private var savedName: String = ""
     private lateinit var searchViewLayout: ConstraintLayout
     private val PICK_IMAGE_REQUEST = 1
-    private var permissionsGranted = false
 
     private lateinit var changePic: Button
     private lateinit var profilePic: ImageView
     private lateinit var userName: TextView
     private lateinit var userEmail: TextView
     private lateinit var reportProblem: Button
+    private var profilePicUri : Uri? = null
 
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+
             if (result.resultCode == RESULT_OK) {
-                val intent = result?.data
-                intent?.data?.let { uri ->
+
+                val picIntent = result?.data!!
+                picIntent.data?.let { uri ->
+
+                    profilePicUri = uri
+
                     Glide.with(this@UserAccount).load(uri).into(profilePic)
+                    mySharedPreference.edit().putString("ProfilePicUri", uri.toString()).apply()
+
                 }
+
             }
+
         }
 
     override fun onCreateView(
@@ -72,8 +81,6 @@ class UserAccount : Fragment() {
             Context.MODE_PRIVATE
         )
 
-        selectedImageUri = mySharedPreference.getString("ProfileImageUri", "")?.toUri()
-
         val activity = activity as? MainActivity
         searchViewLayout =
             activity?.findViewById(R.id.search_drawer_linear_layout) ?: throw IllegalStateException(
@@ -92,39 +99,7 @@ class UserAccount : Fragment() {
         userName.text = savedName
         userEmail.text = savedEmail
 
-        if (permissionsGranted) {
-
-            if (selectedImageUri.toString().isEmpty()) {
-
-                if (changePic.isActivated) {
-
-                    changeProfilePicture()
-
-                } else {
-
-                    profilePic.setImageResource(R.drawable.user_icon)
-
-                }
-
-            } else {
-
-                profilePic.setImageURI(selectedImageUri)
-
-            }
-
-        } else {
-
-            if (changePic.isActivated) {
-
-                requestStoragePermission()
-
-            } else {
-
-                profilePic.setImageResource(R.drawable.user_icon)
-
-            }
-
-        }
+        savedPicLoad()
 
         reportProblem.setOnClickListener {
 
@@ -138,12 +113,6 @@ class UserAccount : Fragment() {
 
         }
 
-        if (mySharedPreference.getString("ProfileImageUri", "").equals("")) {
-
-            profilePic.setImageURI(mySharedPreference.getString("ProfileImageUri", "")?.toUri())
-
-        }
-
         return view
 
     }
@@ -152,113 +121,74 @@ class UserAccount : Fragment() {
 
         val permission = Manifest.permission.READ_EXTERNAL_STORAGE
         val permissionTitle = "Permission Required"
-        val permissionBody = "Please Enable permission from setting "
+        val permissionBody = "Storage Permission needed to upload Profile Picture!"
 
-        if (ContextCompat.checkSelfPermission(
-                requireContext(),
-                Manifest.permission.READ_EXTERNAL_STORAGE
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
+        if(ContextCompat.checkSelfPermission(requireContext(), permission)
+            != PackageManager.PERMISSION_GRANTED){
 
-            if (ActivityCompat.shouldShowRequestPermissionRationale(
-                    requireActivity(),
-                    permission
-                )
-            ) {
-                showRationaleDialog(permissionTitle, permissionBody) { _, _ ->
-                    ActivityCompat.requestPermissions(
-                        requireActivity(),
-                        arrayOf(permission),
-                        PICK_IMAGE_REQUEST
-                    )
+        if(ActivityCompat.shouldShowRequestPermissionRationale(requireActivity(),permission)){
+
+            showRationaleDialog(permissionTitle, permissionBody){_, _ ->
+
+                showSettingDialog()
+
                 }
-            } else {
-                ActivityCompat.requestPermissions(
-                    requireActivity(),
-                    arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE),
-                    PICK_IMAGE_REQUEST
-                )
+
+            }else{
+
+                ActivityCompat.requestPermissions(requireActivity(), arrayOf(permission), PICK_IMAGE_REQUEST)
+
             }
-        } else {
+
+        }else{
+
             openGallery()
 
         }
+
     }
 
-    private fun showRationaleDialog(
-        permissionTitle: String,
-        permisionBod: String,
-        onClickListener: DialogInterface.OnClickListener
-    ) {
-        val dialog = AlertDialog.Builder(requireContext())
+    private fun showSettingDialog() {
+
+        val dialog = AlertDialog.Builder(requireContext(), R.style.CustomDialogBox)
+            .setTitle("Permission")
+            .setMessage("Go to App Storage Permission Settings...?")
+            .setPositiveButton("Yes",){ _,_ ->
+
+                val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                val uri = Uri.fromParts("package",requireContext().packageName,null)
+                intent.data = uri
+
+                startActivityForResult(intent,121)
+
+            }
+            .setNegativeButton("No",null)
+            .create()
+
+        dialog.show()
+
+    }
+
+    private fun showRationaleDialog(permissionTitle : String , permissionBody : String ,
+    onClickListener: DialogInterface.OnClickListener) {
+
+        val dialog = AlertDialog.Builder(requireContext(), R.style.CustomDialogBox)
             .setTitle(permissionTitle)
-            .setMessage(permisionBod)
-            .setPositiveButton("OK",onClickListener)
-            .setNegativeButton("Cancel",null)
+            .setMessage(permissionBody)
+            .setPositiveButton("OK", onClickListener)
+            .setNegativeButton("Cancel", null)
             .create()
         dialog.show()
     }
 
     private fun openGallery() {
-        val intent =
-            Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
-        requestPermissionLauncher.launch(intent)
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        if(requestCode == PICK_IMAGE_REQUEST){
-            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED){
-                openGallery()
-            }else{
-                if(!ActivityCompat.shouldShowRequestPermissionRationale(requireActivity(),Manifest.permission.READ_EXTERNAL_STORAGE)){
-                    showSettingDialog()
-                }else{
-
-                }
-            }
-
-        }
-    }
-
-    private fun showSettingDialog() {
-        val dialog = AlertDialog.Builder(requireContext())
-            .setTitle("Permission")
-            .setMessage("Give Permission")
-            .setPositiveButton("OK",){ _,_ ->
-                val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                val uri = Uri.fromParts("package",requireContext().packageName,null)
-                intent.data = uri
-                startActivityForResult(intent,121)
-            }
-            .setNegativeButton("Cancel",null)
-            .create()
-        dialog.show()
-    }
-
-    private fun changeProfilePicture() {
 
         val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
-        startActivityForResult(intent, PICK_IMAGE_REQUEST)
-
-    }
-
-    private fun requestStoragePermission() {
-
-       /* requestPermissionLauncher.launch(
-            arrayOf(
-                android.Manifest.permission.READ_EXTERNAL_STORAGE,
-                android.Manifest.permission.WRITE_EXTERNAL_STORAGE
-            )
-        )*/
+        requestPermissionLauncher.launch(intent)
 
     }
 
     companion object {
-
         fun newInstance() = UserAccount()
 
     }
@@ -266,48 +196,46 @@ class UserAccount : Fragment() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
 
         super.onActivityResult(requestCode, resultCode, data)
-        if(requestCode == 121){
-            requestPermission()
+
+        if (requestCode == 121 && resultCode == RESULT_OK) {
+            data?.data?.let { uri ->
+                profilePicUri = uri
+                Glide.with(this@UserAccount).load(uri).into(profilePic)
+
+                // Save the URI to shared preferences
+                mySharedPreference.edit().putString("ProfilePicUri", uri.toString()).apply()
+
+            }
+
         }
 
-//        if (requestCode == PICK_IMAGE_REQUEST && resultCode == Activity.RESULT_OK && data != null) {
-//
-//            val imageUri: Uri? = data.data
-//
-//            imageUri.let {
-//
-//                if (it != null) {
-//
-//                    saveProfilePic(it)
-//
-//                }
-//
-//                mySharedPreference = requireActivity().getSharedPreferences(
-//                    "myAppPref",
-//                    Context.MODE_PRIVATE
-//                )
-//                mySharedPreference.edit().putString("ProfileImageUri", imageUri.toString()).apply()
-//                profilePic.setImageURI(imageUri)
-//
-//            }
-//
-//        } else {
-//
-//            Toast.makeText(requireContext(), "Image Not Picked", Toast.LENGTH_SHORT).show()
-//
-//        }
-    }
+       /* if(requestCode == 121){
 
-    private fun saveProfilePic(imageUri: Uri) {
+            requestPermission()
 
-        mySharedPreference.edit().putString("ProfileImageUri", imageUri.toString()).commit()
+        }*/
 
     }
 
-    private fun getProfilePictureFile(): File {
+    private fun savedPicLoad(){
 
-        val directory = requireContext().getExternalFilesDir(Environment.DIRECTORY_PICTURES)
-        return File(directory, "profile_picture.jpg")
+        if(ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.READ_EXTERNAL_STORAGE)
+            != PackageManager.PERMISSION_GRANTED){
+
+         requestPermission()
+
+        }else{
+
+            val savedUriString = mySharedPreference.getString("ProfilePicUri", null)
+            if(savedUriString != null){
+
+                val savedUri = Uri.parse(savedUriString)
+                Glide.with(this@UserAccount).load(savedUri).into(profilePic)
+                profilePicUri = savedUri
+
+            }
+
+        }
 
     }
 
