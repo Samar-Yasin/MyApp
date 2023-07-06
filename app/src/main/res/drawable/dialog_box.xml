@@ -1,0 +1,8 @@
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/movies_app_color_background" />
+    <corners android:radius="25dp" />
+    <stroke
+        android:color="@color/movies_app_color_buttons"
+        android:width="4dp" />
+
+</shape>

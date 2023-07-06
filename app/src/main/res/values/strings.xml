@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">MyApp</string>
+    <!-- TODO: Remove or change this placeholder text -->
+    <string name="image_description">Movie</string>
+    <!-- TODO: Remove or change this placeholder text -->
+    <string name="hello_blank_fragment">Hello blank fragment</string>
+    <string name="title_text_splash">Movies App</string>
+    <string name="title_image_des">Movies App Image</string>
+
+    <string name="nav_open">Open</string>
+    <string name="nav_close">Close</string>
+
+</resources>

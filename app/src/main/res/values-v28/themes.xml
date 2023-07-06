@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="CustomButtonStyle" parent="Widget.MaterialComponents.Button">
+        <item name="android:buttonCornerRadius">35dp</item>
+        <item name="android:buttonTint">#1590BA</item>
+        <item name="android:textColor">@color/black</item>
+    </style>
+
+</resources>
