@@ -1,33 +1,24 @@
 package com.example.myapp
 
 import android.app.AlertDialog
-import android.content.Context
-import android.content.SharedPreferences
 import android.os.Bundle
-import android.text.InputType
-import android.text.TextUtils
-import android.util.Log
-import android.util.Patterns
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
-import androidx.core.content.edit
 import androidx.fragment.app.Fragment
-import androidx.room.Room
+import com.example.myapp.model.UserDetailModel
 import com.example.myapp.utils.navigateFragment
-import kotlinx.coroutines.*
-import okhttp3.Dispatcher
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.ktx.Firebase
 import java.util.regex.Pattern
 
 class Signup : Fragment() {
-
-//    private lateinit var mySharedPreference : SharedPreferences
-    private var isLoginDone : Boolean = false
 
     private lateinit var edCompleteName : EditText
     private lateinit var edEmail : EditText
@@ -35,6 +26,9 @@ class Signup : Fragment() {
     private lateinit var edRepeatPassword : EditText
     private lateinit var signupBtn : Button
     private lateinit var loginBtn : TextView
+
+    private lateinit var mAuth : FirebaseAuth
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
@@ -43,6 +37,8 @@ class Signup : Fragment() {
 
         // Inflate the layout for this fragment
         val view = inflater.inflate(R.layout.fragment_signup, container, false)
+
+        mAuth = Firebase.auth
 
         edCompleteName = view.findViewById(R.id.complete_name_edit_text_field3)
         edEmail = view.findViewById(R.id.edemail_edit_text3)
@@ -89,33 +85,36 @@ class Signup : Fragment() {
 
                                         if(enteredPassword == enterPasswordAgain){
 
-//                                            updateLoginStatus(isLoginDone)
+                                            mAuth.createUserWithEmailAndPassword(enteredEmail, enteredPassword)
+                                                .addOnCompleteListener { task ->
 
-                                            val myAppSharedPreference = requireContext().getSharedPreferences("myAppPref", Context.MODE_PRIVATE)
-                                            myAppSharedPreference.edit().putBoolean("isLoginDone", isLoginDone).apply()
-                                            myAppSharedPreference.edit().putString("Email", enteredEmail).apply()
-                                            myAppSharedPreference.edit().putString("Complete Name", enteredName).apply()
-//                                            updateEmail(enteredEmail)
+                                                    if(task.isSuccessful){
+                                                        val dbRef = FirebaseDatabase.getInstance().reference
+                                                        val model = UserDetailModel(
+                                                            enteredName,
+                                                            enteredEmail,
+                                                            mAuth.uid.toString(),
+                                                            false,
+                                                            ""
+                                                        )
+                                                        dbRef.child("User").child(mAuth.uid.toString()).setValue(model)
+                                                        Toast.makeText(requireContext(), "Signup Successful", Toast.LENGTH_SHORT).show()
 
+                                                        view.navigateFragment(
+                                                            R.id.action_signup_to_login
+                                                        )
 
-                                            val  appDataBase = Room.databaseBuilder(requireContext(),
-                                                MyAppDataBase::class.java, "MyAppDB").build()
+                                                    }else{
 
-                                            val userDao = appDataBase.userInfoDao()
+                                                        Toast.makeText(requireContext(), "User Addition Failed", Toast.LENGTH_SHORT).show()
 
-                                            val newUser = UsersInfo(completeName = enteredName, email = enteredEmail,
-                                            password = enteredPassword, id = 0)
+                                                    }
 
-                                            GlobalScope.launch(Dispatchers.IO) {
+                                                }.addOnFailureListener { exception ->
 
-                                                userDao.insertUserInfo(newUser)
+                                                    exception.printStackTrace()
 
-                                            }
-
-                                            view.navigateFragment(
-                                                R.id.action_signup_to_login
-                                            )
-                                            Toast.makeText(requireContext(), "Registration Successful.", Toast.LENGTH_SHORT).show()
+                                                }
 
                                         }else{
 
@@ -293,42 +292,10 @@ class Signup : Fragment() {
     }
 
     companion object {
+
         fun newInstance() = Signup()
-    }
-
-    private fun updateLoginStatus(isLoginDone: Boolean) {
-
-        /*mySharedPreference = requireActivity().getSharedPreferences("myAppPref", Context.MODE_PRIVATE)
-        val editor = mySharedPreference.edit()
-        editor.apply {
-
-            putBoolean("isLoginDone", isLoginDone)
-
-        }.apply()*/
-
-
 
     }
-
-//    private fun updateEmail(email: String) {
-
-        /*mySharedPreference = requireActivity().getSharedPreferences("myAppPref", Context.MODE_PRIVATE)
-        val editor = mySharedPreference.edit()
-        editor.apply {
-
-            putString("Email", email)
-
-        }.apply()*/
-
-//        val myAppSharedPreference = requireContext().getSharedPreferences("myAppPref", Context.MODE_PRIVATE)
-//        myAppSharedPreference.edit().putString("Email", email).apply()
-
-//    }
-
-/*    private fun isEmailValid(email: String): Boolean {
-        val regexPattern = Regex("^\\w+([.-]?\\w+)*@\\w+([.-]?\\w+)*(\\.\\w{2,})$")
-        return regexPattern.matches(email)
-    }*/
 
     private fun isEmailValid(email : String): Boolean {
 

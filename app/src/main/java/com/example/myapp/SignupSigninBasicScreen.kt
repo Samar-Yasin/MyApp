@@ -8,6 +8,7 @@ import androidx.fragment.app.FragmentContainer
 import androidx.fragment.app.FragmentManager
 import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
+import com.google.firebase.FirebaseApp
 import kotlin.properties.Delegates
 
 class SignupSigninBasicScreen : AppCompatActivity(){

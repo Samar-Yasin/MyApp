@@ -3,17 +3,12 @@ package com.example.myapp
 import android.Manifest
 import android.app.Activity.RESULT_OK
 import android.app.AlertDialog
-import android.content.Context
 import android.content.DialogInterface
-import android.content.DialogInterface.OnClickListener
 import android.content.Intent
-import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
-import android.os.Environment
 import android.provider.MediaStore
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -28,11 +23,16 @@ import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
 import com.bumptech.glide.Glide
-import java.io.File
+import com.bumptech.glide.request.RequestOptions
+import com.example.myapp.model.UserDetailModel
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.database.DatabaseReference
+import com.google.firebase.database.ktx.database
+import com.google.firebase.ktx.Firebase
 
 class UserAccount : Fragment() {
 
-    private lateinit var mySharedPreference: SharedPreferences
     private var savedEmail: String = ""
     private var savedName: String = ""
     private lateinit var searchViewLayout: ConstraintLayout
@@ -43,7 +43,9 @@ class UserAccount : Fragment() {
     private lateinit var userName: TextView
     private lateinit var userEmail: TextView
     private lateinit var reportProblem: Button
-    private var profilePicUri : Uri? = null
+    private var savedProfilePicUri: String = ""
+
+    private lateinit var mAuth: FirebaseAuth
 
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -53,10 +55,19 @@ class UserAccount : Fragment() {
                 val picIntent = result?.data!!
                 picIntent.data?.let { uri ->
 
-                    profilePicUri = uri
+                    savedProfilePicUri = uri.toString()
 
-                    Glide.with(this@UserAccount).load(uri).into(profilePic)
-                    mySharedPreference.edit().putString("ProfilePicUri", uri.toString()).apply()
+                    Glide.with(this@UserAccount)
+                        .load(savedProfilePicUri)
+                        .apply(RequestOptions.circleCropTransform())
+                        .into(profilePic)
+
+                    val dbRef = Firebase.database.reference
+                    val userRef = dbRef.child("User").child(mAuth.uid.toString())
+                    val updates = HashMap<String, Any>()
+                    updates["profilePicURL"] = savedProfilePicUri
+
+                    userRef.updateChildren(updates)
 
                 }
 
@@ -72,14 +83,11 @@ class UserAccount : Fragment() {
         // Inflate the layout for this fragment
         val view = inflater.inflate(R.layout.fragment_user_account, container, false)
 
+        mAuth = Firebase.auth
+
         changePic = view.findViewById(R.id.change_img1)
         profilePic = view.findViewById(R.id.user_profile)
         reportProblem = view.findViewById(R.id.report_problem)
-
-        mySharedPreference = requireActivity().getSharedPreferences(
-            "myAppPref",
-            Context.MODE_PRIVATE
-        )
 
         val activity = activity as? MainActivity
         searchViewLayout =
@@ -93,13 +101,7 @@ class UserAccount : Fragment() {
         userName = view.findViewById(R.id.user_name)
         userEmail = view.findViewById(R.id.user_email)
 
-        savedEmail = mySharedPreference.getString("Email", "").toString()
-        savedName = mySharedPreference.getString("Complete Name", "").toString()
-
-        userName.text = savedName
-        userEmail.text = savedEmail
-
-        savedPicLoad()
+        getUserDetail()
 
         reportProblem.setOnClickListener {
 
@@ -117,30 +119,65 @@ class UserAccount : Fragment() {
 
     }
 
+    private fun getUserDetail() {
+
+        val database : DatabaseReference = Firebase.database.reference
+        val userId = mAuth.currentUser?.uid
+        database.child("User").child(userId!!).get().addOnSuccessListener {
+
+            val user: UserDetailModel? = it.getValue(UserDetailModel::class.java)
+
+            savedName = user!!.completeName
+            savedEmail = user.email
+            savedProfilePicUri = user.profilePicURL
+
+            userName.text = savedName
+            userEmail.text = savedEmail
+
+            savedPicLoad(savedProfilePicUri.toUri())
+
+
+        }.addOnFailureListener {
+
+            it.printStackTrace()
+
+        }
+
+    }
+
     private fun requestPermission() {
 
         val permission = Manifest.permission.READ_EXTERNAL_STORAGE
         val permissionTitle = "Permission Required"
         val permissionBody = "Storage Permission needed to upload Profile Picture!"
 
-        if(ContextCompat.checkSelfPermission(requireContext(), permission)
-            != PackageManager.PERMISSION_GRANTED){
+        if (ContextCompat.checkSelfPermission(requireContext(), permission)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
 
-        if(ActivityCompat.shouldShowRequestPermissionRationale(requireActivity(),permission)){
+            if (ActivityCompat.shouldShowRequestPermissionRationale(
+                    requireActivity(),
+                    permission
+                )
+            ) {
 
-            showRationaleDialog(permissionTitle, permissionBody){_, _ ->
+                showRationaleDialog(permissionTitle, permissionBody) { _, _ ->
 
-                showSettingDialog()
+                    showSettingDialog()
 
                 }
 
-            }else{
+            } else {
 
-                ActivityCompat.requestPermissions(requireActivity(), arrayOf(permission), PICK_IMAGE_REQUEST)
+                ActivityCompat.requestPermissions(
+                    requireActivity(),
+                    arrayOf(permission),
+                    PICK_IMAGE_REQUEST
+                )
 
             }
 
-        }else{
+        } else {
 
             openGallery()
 
@@ -153,24 +190,26 @@ class UserAccount : Fragment() {
         val dialog = AlertDialog.Builder(requireContext(), R.style.CustomDialogBox)
             .setTitle("Permission")
             .setMessage("Go to App Storage Permission Settings...?")
-            .setPositiveButton("Yes",){ _,_ ->
+            .setPositiveButton("Yes",) { _, _ ->
 
                 val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                val uri = Uri.fromParts("package",requireContext().packageName,null)
+                val uri = Uri.fromParts("package", requireContext().packageName, null)
                 intent.data = uri
 
-                startActivityForResult(intent,121)
+                startActivityForResult(intent, 121)
 
             }
-            .setNegativeButton("No",null)
+            .setNegativeButton("No", null)
             .create()
 
         dialog.show()
 
     }
 
-    private fun showRationaleDialog(permissionTitle : String , permissionBody : String ,
-    onClickListener: DialogInterface.OnClickListener) {
+    private fun showRationaleDialog(
+        permissionTitle: String, permissionBody: String,
+        onClickListener: DialogInterface.OnClickListener
+    ) {
 
         val dialog = AlertDialog.Builder(requireContext(), R.style.CustomDialogBox)
             .setTitle(permissionTitle)
@@ -199,41 +238,70 @@ class UserAccount : Fragment() {
 
         if (requestCode == 121 && resultCode == RESULT_OK) {
             data?.data?.let { uri ->
-                profilePicUri = uri
-                Glide.with(this@UserAccount).load(uri).into(profilePic)
+                savedProfilePicUri = uri.toString()
 
-                // Save the URI to shared preferences
-                mySharedPreference.edit().putString("ProfilePicUri", uri.toString()).apply()
+                Glide.with(this@UserAccount)
+                    .load(uri)
+                    .apply(RequestOptions.circleCropTransform())
+                    .into(profilePic)
+
+                val dbRef = Firebase.database.reference
+                val userRef = dbRef.child("User").child(mAuth.uid.toString())
+                val updates = HashMap<String, Any>()
+                updates["profilePicURL"] = savedProfilePicUri
+
+                userRef.updateChildren(updates)
+                    .addOnCompleteListener {
+
+                        if(it.isSuccessful){
+
+                            Toast.makeText(requireContext(), "Profile Updated Successfully", Toast.LENGTH_SHORT).show()
+
+                        }else{
+
+                            Toast.makeText(requireContext(), "Profile Update Failed", Toast.LENGTH_SHORT).show()
+
+                        }
+
+                    }.addOnFailureListener {
+
+                        it.printStackTrace()
+
+                    }
+
 
             }
 
         }
 
-       /* if(requestCode == 121){
-
-            requestPermission()
-
-        }*/
-
     }
 
-    private fun savedPicLoad(){
+    private fun savedPicLoad(uri : Uri) {
 
-        if(ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.READ_EXTERNAL_STORAGE)
-            != PackageManager.PERMISSION_GRANTED){
 
-         requestPermission()
+        if(!uri.toString().isEmpty()){
+
+            if (ContextCompat.checkSelfPermission(
+                    requireContext(),
+                    Manifest.permission.READ_EXTERNAL_STORAGE
+                )
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+
+                requestPermission()
+
+            } else {
+
+                Glide.with(this@UserAccount)
+                    .load(uri)
+                    .apply(RequestOptions.circleCropTransform())
+                    .into(profilePic)
+
+            }
 
         }else{
 
-            val savedUriString = mySharedPreference.getString("ProfilePicUri", null)
-            if(savedUriString != null){
-
-                val savedUri = Uri.parse(savedUriString)
-                Glide.with(this@UserAccount).load(savedUri).into(profilePic)
-                profilePicUri = savedUri
-
-            }
+            profilePic.setImageResource(R.drawable.user_icon)
 
         }
 

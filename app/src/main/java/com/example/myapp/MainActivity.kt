@@ -1,48 +1,49 @@
 package com.example.myapp
 
 import android.app.AlertDialog
-import android.content.Context
 import android.content.Intent
-import android.content.SharedPreferences
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
-import android.view.MenuItem
-import android.view.View
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.ActionBarDrawerToggle
+import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
-import androidx.core.content.edit
 import androidx.core.widget.addTextChangedListener
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.fragment.app.Fragment
-import androidx.navigation.NavController
-import androidx.navigation.Navigation
-import androidx.navigation.ui.NavigationUI
-import androidx.room.Room
 import com.example.myapp.model.UpComingMoviesModel
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.navigation.NavigationView
-import kotlinx.coroutines.*
+import com.google.firebase.auth.AuthCredential
+import com.google.firebase.auth.EmailAuthProvider
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.database.DatabaseReference
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ktx.database
+import com.google.firebase.ktx.Firebase
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-import kotlin.system.exitProcess
 
 class MainActivity : AppCompatActivity(), UpComingMoviesFragmentInterface, TopRatedMoviesFragmentInterface,
-    PopularMoviesFragmentInterface, NavigationDrawerClickListener  {
+    PopularMoviesFragmentInterface, NavigationDrawerClickListener {
 
     private var tag: String = ""
 
-    private var isLoginDone : Boolean = false
+    private lateinit var mAuth: FirebaseAuth
 
-//    private lateinit var mySharedPreference : SharedPreferences
+    private lateinit var userEmail : String
 
-    private lateinit var bottom_nevigation : BottomNavigationView
+    private lateinit var bottom_nevigation: BottomNavigationView
 
-    private lateinit var tollbar : Toolbar
+    private lateinit var tollbar: Toolbar
 
     private lateinit var drawerLayout: DrawerLayout
 
@@ -50,7 +51,7 @@ class MainActivity : AppCompatActivity(), UpComingMoviesFragmentInterface, TopRa
 
     private lateinit var navigationView: NavigationView
 
-    private lateinit var searchedMoviesList : ArrayList<UpComingMoviesModel.Result>
+    private lateinit var searchedMoviesList: ArrayList<UpComingMoviesModel.Result>
 
     private lateinit var searchView: EditText
 
@@ -64,23 +65,22 @@ class MainActivity : AppCompatActivity(), UpComingMoviesFragmentInterface, TopRa
         setContentView(R.layout.activity_main)
 
         bottom_nevigation = findViewById(R.id.bottom_navigation)
-
         tollbar = findViewById(R.id.toolbar_drawer)
-
         navigationView = findViewById(R.id.navigation_view)
 
+        mAuth = FirebaseAuth.getInstance()
 
         setSupportActionBar(tollbar)
 
-            drawerLayout = findViewById(R.id.main_content)
+        drawerLayout = findViewById(R.id.main_content)
 
-            toggle = ActionBarDrawerToggle(
-                parent,
-                drawerLayout,
-                tollbar,
-                R.string.nav_open,
-                R.string.nav_close
-            )
+        toggle = ActionBarDrawerToggle(
+            parent,
+            drawerLayout,
+            tollbar,
+            R.string.nav_open,
+            R.string.nav_close
+        )
 
         drawerLayout.addDrawerListener(toggle)
 
@@ -88,138 +88,91 @@ class MainActivity : AppCompatActivity(), UpComingMoviesFragmentInterface, TopRa
 
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
-
         navigationMethod()
 
-            searchView = findViewById(R.id.search_view)
+        searchView = findViewById(R.id.search_view)
 
-        /* if (searchView.isNotEmpty()) {
-            var searchJob: Job? = null
-            searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-                override fun onQueryTextSubmit(p0: String?): Boolean {
-                    return false
-                }
-                override fun onQueryTextChange(p0: String?): Boolean {
-                    searchJob?.cancel()
-                    searchJob = CoroutineScope(Dispatchers.Main).launch {
-                        delay(1000L)
-                        Log.d(TAG, "onQueryTextChange: ")
-                        if(tag.equals("Popular",true)){
-                            searchForPopularMovies(p0!!)
-                        }else if(tag.equals("Top",true)){
-                            searchForTopMovies(p0!!)
-                        }else if(tag.equals("upComing",true)){
-                            searchForUpComingMovies(p0!!)
-                        }
-                    }
-                    return true
-                }
-            })
-        }*/
+        var searchJob: Job? = null
 
-            var searchJob: Job? = null
+        searchView.addTextChangedListener(afterTextChanged = {
 
-            searchView.addTextChangedListener(afterTextChanged = {
+            Log.d(TAG, "onTextChanged: Count...1$it")
 
-                Log.d(TAG, "onTextChanged: Count...1$it")
+            searchJob = CoroutineScope(Dispatchers.Main).launch {
 
-                searchJob = CoroutineScope(Dispatchers.Main).launch {
+                val searchText = it.toString()
 
-                    val searchText = it.toString()
+                if (tag.equals("Popular", true)) {
 
-                    if (tag.equals("Popular", true)) {
+                    searchForPopularMovies(searchText)
 
-                        searchForPopularMovies(searchText)
+                } else if (tag.equals("Top", true)) {
 
-                    } else if (tag.equals("Top", true)) {
+                    searchForTopMovies(searchText)
 
-                        searchForTopMovies(searchText)
+                } else if (tag.equals("upComing", true)) {
 
-                    } else if (tag.equals("upComing", true)) {
+                    searchForUpComingMovies(searchText)
 
-                        searchForUpComingMovies(searchText)
-
-                    }
-
-                }
-
-            })
-
-            /*if(searchView.text.isNotEmpty()){
-            searchJob?.cancel()
-            searchView.addTextChangedListener(object : TextWatcher{
-                override fun beforeTextChanged(p0: CharSequence?, p1: Int, p2: Int, p3: Int) {
-                    TODO("Not yet implemented")
-                override fun onTextChanged(p0: CharSequence?, p1: Int, p2: Int, p3: Int) {
-                    searchJob?.cancel()
-                    val searchText = p0.toString()
-                    if (tag.equals("Popular", true)) {
-                        searchForPopularMovies(searchText)
-                    } else if (tag.equals("Top", true)) {
-                        searchForTopMovies(searchText)
-                    } else if (tag.equals("upComing", true)) {
-                        searchForUpComingMovies(searchText)
-                    }
-                }
-
-                override fun afterTextChanged(p0: Editable?) {
-                    TODO("Not yet implemented")
-                }
-            })
-        }*/
-
-            supportActionBar?.setDisplayHomeAsUpEnabled(true)
-
-            val toolbar = supportActionBar
-
-            upComingMoviesFragment = UpComingMoviesFragment.newInstance()
-
-            loadFragmentReplace("UpComing", upComingMoviesFragment!!)
-
-            tag = "UpComing"
-
-            bottom_nevigation.setOnItemSelectedListener { item ->
-
-                val fragment: Fragment
-
-                when (item.itemId) {
-
-                    R.id.upcoming_movies -> {
-                        toolbar?.title = "UpComing"
-                        tag = "UpComing"
-                        fragment = UpComingMoviesFragment()
-                        loadFragmentReplace(tag, fragment)
-                        true
-                    }
-
-                    R.id.popular -> {
-                        toolbar?.title = "Popular"
-                        tag = "Popular"
-                        fragment = PopularMoviesFragment()
-                        loadFragmentReplace(tag, fragment)
-                        true
-                    }
-
-                    R.id.top_rated -> {
-                        toolbar?.title = "TopRated"
-                        tag = "Top"
-                        fragment = TopRatedMoviesFragment()
-                        loadFragmentReplace(tag, fragment)
-                        true
-                    }
-
-                    R.id.user_account -> {
-                        toolbar?.title = "Account"
-                        tag = "User"
-                        fragment = UserAccount()
-                        loadFragmentReplace(tag, fragment)
-                        true
-                    }
-
-                    else -> false
                 }
 
             }
+
+        })
+
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+
+        val toolbar = supportActionBar
+
+        upComingMoviesFragment = UpComingMoviesFragment.newInstance()
+
+        loadFragmentReplace("UpComing", upComingMoviesFragment!!)
+
+        tag = "UpComing"
+
+        bottom_nevigation.setOnItemSelectedListener { item ->
+
+            val fragment: Fragment
+
+            when (item.itemId) {
+
+                R.id.upcoming_movies -> {
+                    toolbar?.title = "UpComing"
+                    tag = "UpComing"
+                    fragment = UpComingMoviesFragment()
+                    loadFragmentReplace(tag, fragment)
+                    true
+                }
+
+                R.id.popular -> {
+                    toolbar?.title = "Popular"
+                    tag = "Popular"
+                    fragment = PopularMoviesFragment()
+                    loadFragmentReplace(tag, fragment)
+                    true
+                }
+
+                R.id.top_rated -> {
+                    toolbar?.title = "TopRated"
+                    tag = "Top"
+                    fragment = TopRatedMoviesFragment()
+                    loadFragmentReplace(tag, fragment)
+                    true
+                }
+
+                R.id.user_account -> {
+                    toolbar?.title = "Account"
+                    tag = "User"
+                    fragment = UserAccount()
+                    loadFragmentReplace(tag, fragment)
+                    true
+                }
+
+                else -> false
+
+            }
+
+        }
 
     }
 
@@ -243,7 +196,8 @@ class MainActivity : AppCompatActivity(), UpComingMoviesFragmentInterface, TopRa
                         callbackUp_coming!!.invoke(result)
                         //moviesViewModel.searchedMoviesList = response.body()!!.results as ArrayList<UpComingMoviesModel.Result>
 
-                        searchedMoviesList = response.body()!!.results as ArrayList<UpComingMoviesModel.Result>
+                        searchedMoviesList =
+                            response.body()!!.results as ArrayList<UpComingMoviesModel.Result>
 
                     } catch (e: Exception) {
 
@@ -292,7 +246,8 @@ class MainActivity : AppCompatActivity(), UpComingMoviesFragmentInterface, TopRa
                         callbackTop_Rated!!.invoke(result)
                         //moviesViewModel.searchedMoviesList = response.body()!!.results as ArrayList<UpComingMoviesModel.Result>
 
-                        searchedMoviesList = response.body()!!.results as ArrayList<UpComingMoviesModel.Result>
+                        searchedMoviesList =
+                            response.body()!!.results as ArrayList<UpComingMoviesModel.Result>
 
                     } catch (e: Exception) {
 
@@ -344,7 +299,8 @@ class MainActivity : AppCompatActivity(), UpComingMoviesFragmentInterface, TopRa
 
                         //moviesViewModel.searchedMoviesList = response.body()!!.results as ArrayList<UpComingMoviesModel.Result>
 
-                        searchedMoviesList = response.body()!!.results as ArrayList<UpComingMoviesModel.Result>
+                        searchedMoviesList =
+                            response.body()!!.results as ArrayList<UpComingMoviesModel.Result>
 
                     } catch (e: Exception) {
 
@@ -372,7 +328,7 @@ class MainActivity : AppCompatActivity(), UpComingMoviesFragmentInterface, TopRa
 
     }
 
-    private fun showDeleteAccountDialog(){
+    private fun showDeleteAccountDialog() {
 
         val alertDialogBuilder = AlertDialog.Builder(this, R.style.CustomDialogBox)
 
@@ -380,15 +336,14 @@ class MainActivity : AppCompatActivity(), UpComingMoviesFragmentInterface, TopRa
 
         alertDialogBuilder.setMessage("Are you sure you want to Delete Account")
 
-        alertDialogBuilder.setPositiveButton("Yes"){dialog, which ->
+        alertDialogBuilder.setPositiveButton("Yes") { dialog, which ->
 
             performDeleteAccount()
-
             dialog.dismiss()
 
         }
 
-        alertDialogBuilder.setNegativeButton("No"){dialog, which ->
+        alertDialogBuilder.setNegativeButton("No") { dialog, which ->
 
             dialog.dismiss()
 
@@ -397,6 +352,7 @@ class MainActivity : AppCompatActivity(), UpComingMoviesFragmentInterface, TopRa
         val alertDialog = alertDialogBuilder.create()
 
         alertDialog.show()
+
     }
 
     private fun showLogoutAlertDialog() {
@@ -404,18 +360,16 @@ class MainActivity : AppCompatActivity(), UpComingMoviesFragmentInterface, TopRa
         val alertDialogBuilder = AlertDialog.Builder(this, R.style.CustomDialogBox)
 
         alertDialogBuilder.setTitle("Logout")
-
         alertDialogBuilder.setMessage("Are you sure you want to logout")
 
-        alertDialogBuilder.setPositiveButton("Yes"){dialog, which ->
+        alertDialogBuilder.setPositiveButton("Yes") { dialog, which ->
 
             performLogout()
-
             dialog.dismiss()
 
         }
 
-        alertDialogBuilder.setNegativeButton("No"){dialog, which ->
+        alertDialogBuilder.setNegativeButton("No") { dialog, which ->
 
             dialog.dismiss()
 
@@ -427,45 +381,42 @@ class MainActivity : AppCompatActivity(), UpComingMoviesFragmentInterface, TopRa
 
     }
 
-    private fun performLogout(){
+    private fun performLogout() {
 
-        updateLoginStatus(false)
+        updateLoginStatus()
 
     }
 
-    private fun performDeleteAccount(){
+    private fun performDeleteAccount() {
 
         showInfoVerificationDialog()
 
     }
 
-    private fun showInfoVerificationDialog(){
+    private fun showInfoVerificationDialog() {
 
         val dialogBuilder = AlertDialog.Builder(this, R.style.CustomDialogBox)
 
         dialogBuilder.setTitle("Email & Password Verification")
 
-            // Inflate a layout for the dialog
+        // Inflate a layout for the dialog
 
         val inflater = LayoutInflater.from(this)
-
         val dialogView = inflater.inflate(R.layout.dialog_info_verification, null)
 
-            // Get references to the EditText fields in the dialog
+        // Get references to the EditText fields in the dialog
 
         val emailEditText = dialogView.findViewById<EditText>(R.id.email_edit_text_field4)
-
         val passwordEditText = dialogView.findViewById<EditText>(R.id.password_edit_text_field4)
 
         dialogBuilder.setView(dialogView)
-
         dialogBuilder.setPositiveButton("Verify") { dialog, which ->
 
             val dialogEmailEditText = emailEditText.text.toString()
-
+            userEmail = dialogEmailEditText
             val dialogPasswordEditText = passwordEditText.text.toString()
 
-                // Call the verification function with the email and password
+            // Call the verification function with the email and password
 
             verifyEmailAndPassword(dialogEmailEditText, dialogPasswordEditText)
 
@@ -483,10 +434,10 @@ class MainActivity : AppCompatActivity(), UpComingMoviesFragmentInterface, TopRa
 
     }
 
-    fun navigationMethod(){
-        navigationView.setNavigationItemSelectedListener {menuItem ->
+    private fun navigationMethod() {
+        navigationView.setNavigationItemSelectedListener { menuItem ->
 
-            when(menuItem.itemId){
+            when (menuItem.itemId) {
                 R.id.logout -> {
                     logout()
                     true
@@ -507,9 +458,10 @@ class MainActivity : AppCompatActivity(), UpComingMoviesFragmentInterface, TopRa
             }
 
         }
+
     }
 
-    private fun showFalseInfoDialog(){
+    private fun showFalseInfoDialog() {
 
         val alertDialogBuilder = AlertDialog.Builder(this, R.style.CustomDialogBox)
 
@@ -517,7 +469,7 @@ class MainActivity : AppCompatActivity(), UpComingMoviesFragmentInterface, TopRa
 
         alertDialogBuilder.setMessage("Information provided is wrong.")
 
-        alertDialogBuilder.setPositiveButton("Ok"){dialog, which ->
+        alertDialogBuilder.setPositiveButton("Ok") { dialog, which ->
 
             performLogout()
 
@@ -529,111 +481,86 @@ class MainActivity : AppCompatActivity(), UpComingMoviesFragmentInterface, TopRa
 
     }
 
-    private fun verifyEmailAndPassword(_email: String, _password: String){
+    private fun verifyEmailAndPassword(_email: String, _password: String) {
 
-        val email = _email
+        val firebaseUser = FirebaseAuth.getInstance().currentUser
+        val authCredential : AuthCredential = EmailAuthProvider.getCredential(_email, _password)
 
-        val password = _password
+        firebaseUser?.reauthenticate(authCredential)?.addOnCompleteListener{task ->
+            Log.d(TAG, "AuthenticateTheUserSuccess: $task ")
+            val userId = mAuth.currentUser?.uid
 
-        val appDataBase = Room.databaseBuilder(
+            if(task.isSuccessful){
 
-            applicationContext,
+                Toast.makeText(
+                    applicationContext,
+                    "Verification Successful.",
+                    Toast.LENGTH_SHORT
+                ).show()
 
-            MyAppDataBase::class.java, "MyAppDB"
+                FirebaseDatabase.getInstance().getReference("User")
+                    .child(userId!!)
+                    .removeValue()
 
-        ).build()
+                val user = Firebase.auth.currentUser
+                user?.delete()
+                    ?.addOnCompleteListener { task1 ->
 
-        val userDao = appDataBase.userInfoDao()
+                        if(task1.isSuccessful){
 
-        CoroutineScope(Dispatchers.IO).launch {
+                            Toast.makeText(
+                                applicationContext,
+                                "Account Deleted.",
+                                Toast.LENGTH_SHORT
+                            ).show()
 
-            val userAbc = userDao.getUserInfoByEmail(email)
+                            val intent = Intent(this@MainActivity, SignupSigninBasicScreen::class.java)
+                            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(intent)
 
-            withContext(Dispatchers.Main) {
+                        }else{
 
-                if(userAbc == null){
+                            Toast.makeText(
+                                applicationContext,
+                                "Something went wrong...",
+                                Toast.LENGTH_SHORT
+                            ).show()
 
-                    showFalseInfoDialog()
+                        }
 
-                } else {
+                    }?.addOnFailureListener {
 
-                    val savedEmail = userAbc.email
-
-                    val savedPassword = userAbc.password
-
-                    if(savedEmail != email || savedPassword != password){
-
-                        showFalseInfoDialog()
-
-                    }else{
-
-                        Toast.makeText(applicationContext, "Verification Successful.", Toast.LENGTH_SHORT).show()
-
-                        userDao.deleterUserInfo(userAbc)
-
-                        clearSharedPreferences()
-
-                        Toast.makeText(applicationContext, "Account Deleted.", Toast.LENGTH_SHORT).show()
-
-                        val intent = Intent(this@MainActivity, SignupSigninBasicScreen::class.java)
-                        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK)
-                        startActivity(intent)
+                        it.printStackTrace()
 
                     }
 
-                }
+            }else{
+
+                showFalseInfoDialog()
 
             }
 
+        }?.addOnFailureListener {
+            Log.d(TAG, "AuthenticateTheUserFailure: $it ")
+            it.printStackTrace()
+
         }
 
     }
 
-    private fun clearSharedPreferences(){
+    private fun updateLoginStatus() {
 
-       /* mySharedPreference = this.getSharedPreferences("myAppPref", Context.MODE_PRIVATE)
+        val userId = mAuth.currentUser?.uid
+        val database : DatabaseReference = Firebase.database.reference
+        database.child("User").child(userId!!).child("loginDone").setValue(false)
 
-        val editor = mySharedPreference.edit()
+        FirebaseAuth.getInstance().signOut()
 
-        editor.remove("Email")
-        editor.remove("isLoginDone")
+        Toast.makeText(this, "Logout", Toast.LENGTH_SHORT).show()
 
-        editor.apply()*/
-
-        val myAppSharedPreference = this.getSharedPreferences("myAppPref", Context.MODE_PRIVATE)
-        myAppSharedPreference.edit().remove("isLoginDone").apply()
-        myAppSharedPreference.edit().remove("Email").apply()
-
-    }
-
-    private fun updateLoginStatus(boolean: Boolean) {
-
-        /*mySharedPreference = this.getSharedPreferences("myAppPref", Context.MODE_PRIVATE)
-
-        val editor = mySharedPreference.edit()
-
-        editor.apply {
-
-            putBoolean("isLoginDone", boolean)
-
-        }.apply()*/
-
-
-        val myAppSharedPreference = getSharedPreferences("myAppPref", Context.MODE_PRIVATE)
-
-        if (myAppSharedPreference.edit().putBoolean("isLoginDone", boolean).commit())
-
-        {
-
-            val intent = Intent(this, SignupSigninBasicScreen::class.java)
-            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
-
-        }else{
-
-            Toast.makeText(this, "Something went wrong...", Toast.LENGTH_SHORT).show()
-
-        }
+        val intent = Intent(this, SignupSigninBasicScreen::class.java)
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(intent)
 
     }
 
@@ -686,52 +613,59 @@ class MainActivity : AppCompatActivity(), UpComingMoviesFragmentInterface, TopRa
 
     }
 
-    private fun updatePassword(oldPassword: String, newPassword : String){
+    private fun updatePassword(email : String, oldPassword: String, newPassword : String){
 
-        /*mySharedPreference = this.getSharedPreferences("myAppPref", Context.MODE_PRIVATE)
+        val firebaseUser = FirebaseAuth.getInstance().currentUser
+        val authCredential : AuthCredential = EmailAuthProvider.getCredential(email, oldPassword)
 
-        val email = mySharedPreference.getString("Email", "")
+        firebaseUser?.reauthenticate(authCredential)?.addOnCompleteListener { task ->
 
-*/
+            if(task.isSuccessful){
 
-        val myAppSharedPreference = this.getSharedPreferences("myAppPref", Context.MODE_PRIVATE)
-        val email = myAppSharedPreference.getString("Email","")
+                Toast.makeText(
+                    applicationContext,
+                    "Verification Successful.",
+                    Toast.LENGTH_SHORT
+                ).show()
 
-        val appDataBase = Room.databaseBuilder(
+                val user = Firebase.auth.currentUser
 
-            applicationContext,
+                user?.updatePassword(newPassword)?.addOnCompleteListener { task1 ->
 
-            MyAppDataBase::class.java, "MyAppDB"
+                    if(task1.isSuccessful){
 
-        ).build()
+                        Toast.makeText(
+                            applicationContext,
+                            "Password Updated Successful.",
+                            Toast.LENGTH_SHORT
+                        ).show()
 
-        val userDao = appDataBase.userInfoDao()
+                    }
 
-        CoroutineScope(Dispatchers.IO).launch {
+                }?.addOnFailureListener {
 
-            val user = userDao.getUserInfoByEmail(email!!)
-
-            withContext(Dispatchers.Main) {
-
-                if(user == null){
-
-                    showFalseInfoDialog()
-
-                } else {
-
-                    val savedEmail = user.email
-
-                    val savedPassword = user.password
-
-                    val newPass = newPassword
-
-                    userDao.updatePassword(savedEmail,newPass)
-
-                    Toast.makeText(this@MainActivity, "Password Updated ", Toast.LENGTH_SHORT).show()
+                    it.printStackTrace()
+                    Toast.makeText(
+                        applicationContext,
+                        "Password Update Failed",
+                        Toast.LENGTH_SHORT
+                    ).show()
 
                 }
 
+            }else{
+
+                Toast.makeText(
+                    applicationContext,
+                    "Authentication Failed.",
+                    Toast.LENGTH_SHORT
+                ).show()
+
             }
+
+        }?.addOnFailureListener {
+
+            it.printStackTrace()
 
         }
 
@@ -746,26 +680,25 @@ class MainActivity : AppCompatActivity(), UpComingMoviesFragmentInterface, TopRa
         // Inflate a layout for the dialog
 
         val inflater = LayoutInflater.from(this)
-
         val dialogView = inflater.inflate(R.layout.dialog_password_verification, null)
 
         // Get references to the EditText fields in the dialog
 
+        val dialogEmail = dialogView.findViewById<EditText>(R.id.email_edit_text_field11)
         val oldPasswordEditText = dialogView.findViewById<EditText>(R.id.old_password_edit_text_field)
-
         val newPasswordEditText = dialogView.findViewById<EditText>(R.id.new_password_edit_text_field)
 
         dialogBuilder.setView(dialogView)
 
         dialogBuilder.setPositiveButton("Verify") { dialog, which ->
 
+            val email = dialogEmail.text.toString()
             val oldPassword = oldPasswordEditText.text.toString()
-
             val newPassword = newPasswordEditText.text.toString()
 
             // Call the verification function with the email and password
 
-            updatePassword(oldPassword, newPassword)
+            updatePassword(email, oldPassword, newPassword)
 
         }
 
